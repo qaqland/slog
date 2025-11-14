@@ -55,19 +55,24 @@ struct slog_field {
 	struct slog_list link;
 };
 
-#define slog_container_of(ptr, sample, member)                                \
+struct slog_ctx {
+	FILE *output;
+	enum slog_level level;
+};
+
+#define slog_container_of(ptr, sample, member)                                 \
 	(void *) ((char *) (ptr) -                                             \
 		  ((char *) &(sample)->member - (char *) (sample)))
 
-#define slog_list_for_each(pos, head, member)                                 \
-	for (pos = 0, pos = slog_container_of((head)->next, pos, member);     \
+#define slog_list_for_each(pos, head, member)                                  \
+	for (pos = 0, pos = slog_container_of((head)->next, pos, member);      \
 	     &pos->member != (head);                                           \
 	     pos = slog_container_of(pos->member.next, pos, member))
 
 #define wl_list_for_each_safe(pos, tmp, head, member)                          \
 	for (pos = 0, tmp = 0,                                                 \
-	    pos = slog_container_of((head)->next, pos, member),               \
-	    tmp = slog_container_of((pos)->member.next, tmp, member);         \
+	    pos = slog_container_of((head)->next, pos, member),                \
+	    tmp = slog_container_of((pos)->member.next, tmp, member);          \
 	     &pos->member != (head); pos = tmp,                                \
 	    tmp = slog_container_of(pos->member.next, tmp, member))
 
@@ -242,8 +247,7 @@ void slog_fprintf_time(struct slog_field *field, bool *comma) {
 
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
-	fprintf(SLOG_OUTPUT,
-		"\"timestamp\": \"%04d-%02d-%02d %02d:%02d:%02d\"",
+	fprintf(SLOG_OUTPUT, "\"timestamp\": \"%04d-%02d-%02d %02d:%02d:%02d\"",
 		t->tm_year + 1900, t->tm_mon + 1, t->tm_mday, t->tm_hour,
 		t->tm_min, t->tm_sec);
 
@@ -283,7 +287,7 @@ void slog_fprintf_level(struct slog_field *field, bool *comma) {
 		fprintf(SLOG_OUTPUT, ", ");
 	}
 
-	fprintf(SLOG_OUTPUT, "\"log_level\": ");
+	fprintf(SLOG_OUTPUT, "\"level\": ");
 	switch (field->value.level) {
 	case SLOG_TRACE:
 		fprintf(SLOG_OUTPUT, "\"trace\"");
@@ -348,7 +352,7 @@ void slog_fprintf_field(struct slog_field *field) {
 #define S_STR(KEY, VALUE) slog_new_str(KEY, VALUE)
 #define S_INT(KEY, VALUE) slog_new_int(KEY, VALUE)
 
-#define S_GROUP(KEY, ...)                                                     \
+#define S_GROUP(KEY, ...)                                                      \
 	slog_new_group(KEY __VA_OPT__(, ) __VA_ARGS__, SLOG_NULL)
 
 static void slog_main(enum slog_level level, const char *msg, ...) {
@@ -373,8 +377,8 @@ static void slog_main(enum slog_level level, const char *msg, ...) {
 	}
 	va_end(args);
 
-	struct slog_field *group = slog_new_group(
-		NULL, field_time, field_level, field_message, SLOG_NULL);
+	struct slog_field *group = slog_new_group(NULL, field_time, field_level,
+						  field_message, SLOG_NULL);
 	slog_list_append(&head, &group->link);
 	struct slog_field *field_null = slog_new_type(SLOG_NULL, NULL);
 	slog_list_append(&head, &field_null->link);
@@ -386,15 +390,15 @@ static void slog_main(enum slog_level level, const char *msg, ...) {
 	}
 }
 
-#define SLOG(LEVEL, MSG, ...)                                                 \
+#define SLOG(LEVEL, MSG, ...)                                                  \
 	do {                                                                   \
-		if (!SLOG_OUTPUT) {                                           \
+		if (!SLOG_OUTPUT) {                                            \
 			break;                                                 \
 		}                                                              \
-		if (LEVEL < SLOG_TRACE) {                                     \
+		if (LEVEL < SLOG_TRACE) {                                      \
 			break;                                                 \
 		}                                                              \
-		slog_main(LEVEL, MSG, ##__VA_ARGS__, SLOG_NULL);             \
+		slog_main(LEVEL, MSG, ##__VA_ARGS__, SLOG_NULL);               \
 	} while (0)
 
 #define SLOG_TRACE(msg, ...) SLOG(SLOG_TRACE, msg, ##__VA_ARGS__)

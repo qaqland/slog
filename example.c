@@ -17,14 +17,13 @@ int main() {
 	SLOG_INFO("info helper", S_STR("name", name));
 
 	SLOG_DEBUG("test group", S_STR("name", name),
-		    S_GROUP("details", S_STR("check", "is_ok"),
-			     S_GROUP("user", S_INT("id", id),
-				      S_STR("name", name),
-				      S_STR("email", email))));
+		   S_GROUP("details", S_STR("check", "is_ok"),
+			   S_GROUP("user", S_INT("id", id), S_STR("name", name),
+				   S_STR("email", email))));
 
 	SLOG(SLOG_ERROR, "all support types", S_STR("app", "MyApp"),
-	      S_STR("email", email), S_INT("user_id", id),
-	      S_FLOAT("score", score), S_BOOL("is_active", is_active));
+	     S_STR("email", email), S_INT("user_id", id),
+	     S_FLOAT("score", score), S_BOOL("is_active", is_active));
 
 	// FILE *f = fopen(".test", "w");
 	// SLOG_SET_FILE(f);
