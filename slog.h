@@ -55,10 +55,21 @@ struct slog_field {
 	struct slog_list link;
 };
 
+const struct slog_field slog_field_default;
+
 struct slog_ctx {
 	FILE *output;
-	enum slog_level level;
+
+	// it's hard to share context in one same file
+	// enum slog_level level;
+	// struct slog_field *with;
+
+	// one output
+	struct slog_field *pool;
+	size_t length, capacity;
 };
+
+struct slog_ctx slog_ctx_default;
 
 #define slog_container_of(ptr, sample, member)                                 \
 	(void *) ((char *) (ptr) -                                             \
@@ -68,13 +79,6 @@ struct slog_ctx {
 	for (pos = 0, pos = slog_container_of((head)->next, pos, member);      \
 	     &pos->member != (head);                                           \
 	     pos = slog_container_of(pos->member.next, pos, member))
-
-#define wl_list_for_each_safe(pos, tmp, head, member)                          \
-	for (pos = 0, tmp = 0,                                                 \
-	    pos = slog_container_of((head)->next, pos, member),                \
-	    tmp = slog_container_of((pos)->member.next, tmp, member);          \
-	     &pos->member != (head); pos = tmp,                                \
-	    tmp = slog_container_of(pos->member.next, tmp, member))
 
 void slog_list_init(struct slog_list *list) {
 	list->next = list;
@@ -92,40 +96,53 @@ void slog_list_append(struct slog_list *list, struct slog_list *append) {
 	list->prev = append_end;
 }
 
-struct slog_field *slog_new_type(enum slog_type type, const char *key) {
-	struct slog_field *field = calloc(1, sizeof(*field));
+struct slog_field *slog_new_field(struct slog_ctx *context, enum slog_type type,
+				  const char *key) {
+	assert(context);
+	if (context->capacity == 0 || context->capacity == context->length) {
+		return NULL;
+	}
+	// struct slog_field *field = calloc(1, sizeof(*field));
+	struct slog_field *field = &context->pool[context->length++];
+	*field = slog_field_default;
+
 	slog_list_init(&field->link);
 	field->key = key;
 	field->type = type;
 	return field;
 }
 
-struct slog_field *slog_new_int(const char *key, long long value) {
-	struct slog_field *field = slog_new_type(SLOG_INT, key);
+struct slog_field *slog_new_int(struct slog_ctx *context, const char *key,
+				long long value) {
+	struct slog_field *field = slog_new_field(context, SLOG_INT, key);
 	field->value.integer = value;
 	return field;
 }
 
-struct slog_field *slog_new_str(const char *key, const char *value) {
-	struct slog_field *field = slog_new_type(SLOG_STR, key);
+struct slog_field *slog_new_str(struct slog_ctx *context, const char *key,
+				const char *value) {
+	struct slog_field *field = slog_new_field(context, SLOG_STR, key);
 	field->value.string = value;
 	return field;
 }
 
-struct slog_field *slog_new_float(const char *key, double value) {
-	struct slog_field *field = slog_new_type(SLOG_FLOAT, key);
+struct slog_field *slog_new_float(struct slog_ctx *context, const char *key,
+				  double value) {
+	struct slog_field *field = slog_new_field(context, SLOG_FLOAT, key);
 	field->value.number = value;
 	return field;
 }
 
-struct slog_field *slog_new_bool(const char *key, bool value) {
-	struct slog_field *field = slog_new_type(SLOG_BOOL, key);
+struct slog_field *slog_new_bool(struct slog_ctx *context, const char *key,
+				 bool value) {
+	struct slog_field *field = slog_new_field(context, SLOG_BOOL, key);
 	field->value.boolean = value;
 	return field;
 }
 
-static struct slog_field *slog_new_group(const char *key, ...) {
-	struct slog_field *start = slog_new_type(SLOG_GROUP, key);
+static struct slog_field *slog_new_group(struct slog_ctx *context,
+					 const char *key, ...) {
+	struct slog_field *start = slog_new_field(context, SLOG_GROUP, key);
 
 	va_list args;
 	va_start(args, key);
@@ -136,7 +153,7 @@ static struct slog_field *slog_new_group(const char *key, ...) {
 	}
 	va_end(args);
 
-	struct slog_field *end = slog_new_type(SLOG_CLOSE, "}");
+	struct slog_field *end = slog_new_field(context, SLOG_CLOSE, "}");
 	slog_list_append(&start->link, &end->link);
 
 	return start;
@@ -347,25 +364,27 @@ void slog_fprintf_field(struct slog_field *field) {
 	}
 }
 
-#define S_BOOL(KEY, VALUE) slog_new_bool(KEY, VALUE)
-#define S_FLOAT(KEY, VALUE) slog_new_float(KEY, VALUE)
-#define S_STR(KEY, VALUE) slog_new_str(KEY, VALUE)
-#define S_INT(KEY, VALUE) slog_new_int(KEY, VALUE)
+#define SLOG_CTX_VAR slog_ctx_var
+#define S_BOOL(KEY, VALUE) slog_new_bool(&SLOG_CTX_VAR, KEY, VALUE)
+#define S_FLOAT(KEY, VALUE) slog_new_float(&SLOG_CTX_VAR, KEY, VALUE)
+#define S_STR(KEY, VALUE) slog_new_str(&SLOG_CTX_VAR, KEY, VALUE)
+#define S_INT(KEY, VALUE) slog_new_int(&SLOG_CTX_VAR, KEY, VALUE)
 
 #define S_GROUP(KEY, ...)                                                      \
-	slog_new_group(KEY __VA_OPT__(, ) __VA_ARGS__, SLOG_NULL)
+	slog_new_group(&SLOG_CTX_VAR, KEY __VA_OPT__(, ) __VA_ARGS__, SLOG_NULL)
 
-static void slog_main(enum slog_level level, const char *msg, ...) {
+static void slog_main(struct slog_ctx *ctx, enum slog_level level,
+		      const char *msg, ...) {
 
 	struct slog_list head = {0};
 	slog_list_init(&head);
 
 	struct slog_field *field_time =
-		slog_new_type(SLOG_TIMESTAMP, "timestamp");
+		slog_new_field(ctx, SLOG_TIMESTAMP, "timestamp");
 
-	struct slog_field *field_message = S_STR("message", msg);
+	struct slog_field *field_message = slog_new_str(ctx, "message", msg);
 
-	struct slog_field *field_level = slog_new_type(SLOG_LEVEL, NULL);
+	struct slog_field *field_level = slog_new_field(ctx, SLOG_LEVEL, NULL);
 	field_level->value.level = level;
 
 	va_list args;
@@ -377,17 +396,14 @@ static void slog_main(enum slog_level level, const char *msg, ...) {
 	}
 	va_end(args);
 
-	struct slog_field *group = slog_new_group(NULL, field_time, field_level,
-						  field_message, SLOG_NULL);
+	struct slog_field *group = slog_new_group(
+		ctx, NULL, field_time, field_level, field_message, SLOG_NULL);
 	slog_list_append(&head, &group->link);
-	struct slog_field *field_null = slog_new_type(SLOG_NULL, NULL);
+	struct slog_field *field_null = slog_new_field(ctx, SLOG_NULL, NULL);
 	slog_list_append(&head, &field_null->link);
 
 	struct slog_field *tmp;
-	slog_list_for_each(tmp, &head, link) {
-		slog_fprintf_field(tmp);
-		// TODO for_safe free(element);
-	}
+	slog_list_for_each(tmp, &head, link) { slog_fprintf_field(tmp); }
 }
 
 #define SLOG(LEVEL, MSG, ...)                                                  \
@@ -398,7 +414,12 @@ static void slog_main(enum slog_level level, const char *msg, ...) {
 		if (LEVEL < SLOG_TRACE) {                                      \
 			break;                                                 \
 		}                                                              \
-		slog_main(LEVEL, MSG, ##__VA_ARGS__, SLOG_NULL);               \
+		struct slog_ctx SLOG_CTX_VAR = {0};                            \
+		SLOG_CTX_VAR.capacity = 32;                                    \
+		SLOG_CTX_VAR.pool = calloc(32, sizeof(struct slog_field));     \
+		slog_main(&SLOG_CTX_VAR, LEVEL, MSG, ##__VA_ARGS__,            \
+			  SLOG_NULL);                                          \
+		free(SLOG_CTX_VAR.pool);                                       \
 	} while (0)
 
 #define SLOG_TRACE(msg, ...) SLOG(SLOG_TRACE, msg, ##__VA_ARGS__)
