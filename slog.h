@@ -59,7 +59,9 @@ const struct slog_field slog_field_default;
 
 static thread_local struct slog_field *slog_field_tls = NULL;
 
+#ifndef SLOG_OUTPUT_SIZE
 #define SLOG_OUTPUT_SIZE 4096
+#endif
 static thread_local char output_buffer[SLOG_OUTPUT_SIZE] = {0};
 static thread_local size_t output_index = 1; // strlen() + 1
 
@@ -84,29 +86,19 @@ void slog_field_put(struct slog_field *field) {
 	slog_field_tls = field;
 }
 
-void slog_field_free(struct slog_field *field) {
+void slog_free(struct slog_field *field) {
 	if (!field) {
 		return;
 	}
-	struct slog_field *child, *next;
-	switch (field->type) {
-	case SLOG_TYPE_OBJECT:
-	case SLOG_TYPE_PLAIN:
-		child = field->value.object;
-		while (child) {
-			next = child->next;
-			slog_field_free(child);
-			child = next;
-		}
-		break;
-	default:
-		break;
-	}
-	slog_field_put(field);
+	slog_free(field->next);
+	free(field);
 }
+
+void SLOG_FREE(void) { slog_free(slog_field_tls); }
 
 void slog_vfmt(const char *fmt, ...) {
 	if (!fmt || output_index >= SLOG_OUTPUT_SIZE) {
+		fprintf(stderr, "please increase SLOG_OUTPUT_SIZE");
 		return;
 	}
 
@@ -226,6 +218,7 @@ void slog_fmt_time(struct slog_field *field) {
 
 void slog_field_fmt(struct slog_field *field) {
 	while (field) {
+		struct slog_field *field_bk = field;
 		if (field->key) {
 			slog_fmt_escape(field->key);
 			slog_vfmt(": ");
@@ -263,6 +256,7 @@ void slog_field_fmt(struct slog_field *field) {
 		if (field) {
 			slog_vfmt(", ");
 		}
+		slog_field_put(field_bk);
 	}
 }
 
@@ -291,8 +285,6 @@ static void slog_main(const char *file, const int line, const char *func,
 	output_buffer[0] = '\0';
 
 	slog_field_fmt(root);
-
-	slog_field_free(root);
 
 	fprintf(stdout, "%s\n", output_buffer);
 	fflush(stdout);

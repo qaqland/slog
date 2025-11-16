@@ -24,14 +24,12 @@ int main() {
 	     SLOG_STRING("email", email), SLOG_INT("user_id", id),
 	     SLOG_FLOAT("score", score), SLOG_BOOL("is_active", is_active));
 
-	// FILE *f = fopen(".test", "w");
-	// SLOG_SET_FILE(f);
-	// SLOG(
-	//     SLOG_STR("message", "Hello from stdout"),
-	//     SLOG_INT("example", 123),
-	//     SLOG_BOOL("success", true)
-	// );
-	// fclose(f);
+#define MYLOG(MSG, ...)                                                        \
+	SLOG(SLOG_INFO, MSG, SLOG_INT("user_id", id), ##__VA_ARGS__)
 
+	MYLOG("log from sub-logger");
+#undef MYLOG
+
+	SLOG_FREE();
 	return 0;
 }
