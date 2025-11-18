@@ -32,7 +32,7 @@ enum slog_type {
 	SLOG_TYPE_FLOAT,
 	SLOG_TYPE_BOOL,
 	SLOG_TYPE_TIME,
-	// SLOG_ARRAY,··
+	SLOG_TYPE_ARRAY,
 	SLOG_TYPE_OBJECT,
 	SLOG_TYPE_PLAIN,
 };
@@ -48,7 +48,7 @@ struct slog_node {
 		bool boolean;
 		enum slog_level level;
 		struct timespec time;
-		// struct slog_node *array;
+		struct slog_node *array;
 		struct slog_node *object;
 	} value;
 
@@ -144,8 +144,15 @@ struct slog_node *slog_node_vcreate(enum slog_type type, const char *key,
 	case SLOG_TYPE_TIME:
 		clock_gettime(CLOCK_REALTIME, &node->value.time);
 		break;
-	// case SLOG_ARRAY:
-	case SLOG_TYPE_PLAIN:
+	case SLOG_TYPE_ARRAY:
+		next_ptr = &node->value.array;
+		while ((current = va_arg(ap, struct slog_node *)) != NULL) {
+			current->key = NULL;
+			*next_ptr = current;
+			next_ptr = &current->next;
+		}
+		break;
+	case SLOG_TYPE_PLAIN: // special SLOG_TYPE_OBJECT
 		assert(!key);
 	case SLOG_TYPE_OBJECT:
 		next_ptr = &node->value.object;
@@ -235,6 +242,11 @@ void slog_write_node(struct slog_node *node) {
 		case SLOG_TYPE_FLOAT:
 			slog_buffer_write("%f", node->value.number);
 			break;
+		case SLOG_TYPE_ARRAY:
+			slog_buffer_write("[");
+			slog_write_node(node->value.array);
+			slog_buffer_write("]");
+			break;
 		case SLOG_TYPE_OBJECT:
 			slog_buffer_write("{");
 			slog_write_node(node->value.object);
@@ -292,6 +304,8 @@ static void slog_log_main(const char *file, const int line, const char *func,
 #define SLOG_FLOAT(K, V) slog_node_create(SLOG_TYPE_FLOAT, K, V)
 #define SLOG_STRING(K, V) slog_node_create(SLOG_TYPE_STRING, K, V)
 #define SLOG_INT(K, V) slog_node_create(SLOG_TYPE_INT, K, V)
+#define SLOG_ARRAY(K, ...)                                                     \
+	slog_node_create(SLOG_TYPE_ARRAY, K __VA_OPT__(, ) __VA_ARGS__, NULL)
 #define SLOG_OBJECT(K, ...)                                                    \
 	slog_node_create(SLOG_TYPE_OBJECT, K __VA_OPT__(, ) __VA_ARGS__, NULL)
 

@@ -24,6 +24,10 @@ int main() {
 	     SLOG_STRING("email", email), SLOG_INT("user_id", id),
 	     SLOG_FLOAT("score", score), SLOG_BOOL("is_active", is_active));
 
+	SLOG(SLOG_INFO, "we have array now",
+	     SLOG_ARRAY("brrby", SLOG_INT(NULL, 2), SLOG_INT(NULL, 1),
+			SLOG_INT("striped key", 3)));
+
 #define MYLOG(MSG, ...)                                                        \
 	SLOG(SLOG_INFO, MSG, SLOG_INT("user_id", id), ##__VA_ARGS__)
 
