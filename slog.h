@@ -8,6 +8,7 @@
 #define SLOG_H
 
 #include <assert.h>
+#include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -59,12 +60,6 @@ const struct slog_node slog_node_default;
 
 static thread_local struct slog_node *slog_node_thread_local = NULL;
 
-#ifndef SLOG_BUFFER_SIZE
-#define SLOG_BUFFER_SIZE 4096
-#endif
-static thread_local char slog_output_buffer[SLOG_BUFFER_SIZE] = {0};
-static thread_local size_t slog_buffer_index = 0; // without NULL
-
 struct slog_node *slog_node_get() {
 	struct slog_node *node;
 
@@ -99,23 +94,27 @@ void SLOG_FREE(void) {
 	slog_node_thread_local = NULL;
 }
 
-void slog_buffer_write(const char *fmt, ...) {
-	if (slog_buffer_index >= SLOG_BUFFER_SIZE) {
-		fprintf(stderr,
-			"Buffer full, please increase SLOG_BUFFER_SIZE\n");
-		return;
+const char *slog_buffer_write(const char *fmt, ...) {
+	static thread_local char buffer[PIPE_BUF] = {0};
+	static thread_local size_t index = 0; // without \0
+	if (!fmt) {
+		index = 0;
+		return buffer;
+	}
+
+	if (index + 1 >= sizeof(buffer)) {
+		fprintf(stderr, "Buffer full\n");
+		return NULL;
 	}
 
 	va_list args;
-	va_start(args, fmt);
-	// vprintf(fmt, args);
-	int written =
-		vsnprintf(slog_output_buffer + slog_buffer_index,
-			  SLOG_BUFFER_SIZE - slog_buffer_index, fmt, args);
+	va_start(args, fmt); // vprintf(fmt, args);
+	int len = vsnprintf(buffer + index, sizeof(buffer) - index, fmt, args);
 	va_end(args);
-	if (written > 0) {
-		slog_buffer_index += written;
+	if (len > 0) {
+		index += len;
 	}
+	return NULL;
 }
 
 struct slog_node *slog_node_vcreate(enum slog_type type, const char *key,
@@ -291,12 +290,13 @@ static void slog_log_main(const char *file, const int line, const char *func,
 		slog_node_create(SLOG_TYPE_STRING, "msg", msg),
 		slog_node_create(SLOG_TYPE_TIME, "time"), extra, NULL);
 
-	slog_buffer_index = 0;
-	slog_output_buffer[0] = '\0';
-
+	slog_buffer_write(NULL);
 	slog_write_node(root);
+	const char *buffer = slog_buffer_write(NULL);
 
-	fprintf(stdout, "%s\n", slog_output_buffer);
+	// TODO
+	// use write or custom handler, e.g. with lock
+	fprintf(stdout, "%s\n", buffer);
 	fflush(stdout);
 }
 
