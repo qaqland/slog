@@ -225,7 +225,7 @@ void slog_write_node(struct slog_node *node) {
 		struct slog_node *node_defer = node;
 		if (node->key) {
 			slog_write_escape(node->key);
-			slog_buffer_write(": ");
+			slog_buffer_write(":");
 		}
 		switch (node->type) {
 		case SLOG_TYPE_STRING:
@@ -263,7 +263,7 @@ void slog_write_node(struct slog_node *node) {
 		}
 		node = node->next;
 		if (node) {
-			slog_buffer_write(", ");
+			slog_buffer_write(",");
 		}
 		slog_node_put(node_defer);
 	}
