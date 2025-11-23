@@ -10,6 +10,15 @@ Structured logging library for C.
 - Multiple data types support
 - Auto escaping & timestamps
 
+## Benchmarks
+
+Running on **Arch Linux (Ryzen 9 9900X3D, GCC 15.2.1)**:
+
+- **Simple Events**: ~870k Ops/sec (1.1 µs/op)
+- **Complex Nested Structures**: ~520k Ops/sec (1.9 µs/op)
+
+*Benchmarks run with `-O3 -DNDEBUG` and a no-op handler to isolate formatting overhead. (Run `make run_bench` to verify)*
+
 ## Tutorial
 
 ```c
