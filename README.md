@@ -14,10 +14,16 @@ Structured logging library for C.
 
 Running on **Arch Linux (Ryzen 9 9900X3D, GCC 15.2.1)**:
 
-- **Simple Events**: ~870k Ops/sec (1.1 µs/op)
-- **Complex Nested Structures**: ~520k Ops/sec (1.9 µs/op)
+```console
+make run_bench
+Benchmarking SIMPLE log (1M iterations)...
+Simple Log: 1.1032 seconds | 906456 Ops/sec
+--------------------------------
+Benchmarking COMPLEX log (1M iterations)...
+Complex Log: 1.8559 seconds | 538828 Ops/sec
+```
 
-*Benchmarks run with `-O3 -DNDEBUG` and a no-op handler to isolate formatting overhead. (Run `make run_bench` to verify)*
+*Benchmarks run with `-O3 -DNDEBUG` and a no-op handler to isolate formatting overhead. (Run `make run_bench` to try)*
 
 ## Tutorial
 
