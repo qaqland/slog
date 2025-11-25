@@ -27,15 +27,13 @@ enum slog_level {
 };
 
 enum slog_type {
-	SLOG_TYPE_NULL = 0,
-	SLOG_TYPE_STRING,
+	SLOG_TYPE_STRING = 1,
 	SLOG_TYPE_INT,
 	SLOG_TYPE_FLOAT,
 	SLOG_TYPE_BOOL,
 	SLOG_TYPE_TIME,
 	SLOG_TYPE_ARRAY,
 	SLOG_TYPE_OBJECT,
-	SLOG_TYPE_PLAIN,
 };
 
 struct slog_node {
@@ -127,17 +125,29 @@ const char *slog_buffer_write(const char *fmt, ...) {
 	return NULL;
 }
 
+struct slog_node *slog_node_make_list(bool clear_keys, va_list ap) {
+	struct slog_node *head = NULL;
+	struct slog_node **next_ptr = &head;
+	struct slog_node *current;
+
+	while ((current = va_arg(ap, struct slog_node *)) != NULL) {
+		if (clear_keys) {
+			current->key = NULL;
+		}
+		*next_ptr = current;
+		next_ptr = &current->next;
+	}
+
+	return head;
+}
+
 struct slog_node *slog_node_vcreate(enum slog_type type, const char *key,
 				    va_list ap) {
 	struct slog_node *node = slog_node_get();
 	node->key = key;
 	node->type = type;
 
-	struct slog_node *current, **next_ptr;
-
 	switch (type) {
-	case SLOG_TYPE_NULL:
-		break;
 	case SLOG_TYPE_STRING:
 		node->value.string = va_arg(ap, const char *);
 		break;
@@ -154,21 +164,10 @@ struct slog_node *slog_node_vcreate(enum slog_type type, const char *key,
 		clock_gettime(CLOCK_REALTIME, &node->value.time);
 		break;
 	case SLOG_TYPE_ARRAY:
-		next_ptr = &node->value.array;
-		while ((current = va_arg(ap, struct slog_node *)) != NULL) {
-			current->key = NULL;
-			*next_ptr = current;
-			next_ptr = &current->next;
-		}
+		node->value.array = slog_node_make_list(true, ap);
 		break;
-	case SLOG_TYPE_PLAIN: // special SLOG_TYPE_OBJECT
-		assert(!key);
 	case SLOG_TYPE_OBJECT:
-		next_ptr = &node->value.object;
-		while ((current = va_arg(ap, struct slog_node *)) != NULL) {
-			*next_ptr = current;
-			next_ptr = &current->next;
-		}
+		node->value.object = slog_node_make_list(false, ap);
 		break;
 	}
 	return node;
@@ -261,10 +260,6 @@ void slog_write_node(struct slog_node *node) {
 			slog_write_node(node->value.object);
 			slog_buffer_write("}");
 			break;
-		case SLOG_TYPE_PLAIN:
-			assert(!node->key);
-			slog_write_node(node->value.object);
-			break;
 		case SLOG_TYPE_TIME:
 			slog_write_time(&node->value.time);
 			break;
@@ -279,26 +274,31 @@ void slog_write_node(struct slog_node *node) {
 	}
 }
 
-static void slog_log_main(const char *file, const int line, const char *func,
-			  const char *level, const char *msg, ...) {
+void slog_log_main(const char *file, const int line, const char *func,
+		   const char *level, const char *msg, ...) {
 	va_list nodes;
 	va_start(nodes, msg);
-	struct slog_node *extra =
-		slog_node_vcreate(SLOG_TYPE_PLAIN, NULL, nodes);
+
+	struct slog_node *extra_head = slog_node_make_list(false, nodes);
 	va_end(nodes);
 
 	if (strncmp(level, "SLOG_", 5) == 0) {
 		level = level + 5;
 	}
 
+	struct slog_node *msg_node =
+		slog_node_create(SLOG_TYPE_STRING, "msg", msg);
 	struct slog_node *root = slog_node_create(
 		SLOG_TYPE_OBJECT, NULL,
 		slog_node_create(SLOG_TYPE_STRING, "file", file),
 		slog_node_create(SLOG_TYPE_INT, "line", line),
 		slog_node_create(SLOG_TYPE_STRING, "func", func),
 		slog_node_create(SLOG_TYPE_STRING, "level", level),
-		slog_node_create(SLOG_TYPE_STRING, "msg", msg),
-		slog_node_create(SLOG_TYPE_TIME, "time"), extra, NULL);
+		slog_node_create(SLOG_TYPE_TIME, "time"), msg_node, NULL);
+
+	if (extra_head) {
+		msg_node->next = extra_head;
+	}
 
 	slog_buffer_write(NULL);
 	slog_write_node(root);
